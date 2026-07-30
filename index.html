@@ -139,6 +139,23 @@ table.pers tr.now td.n{box-shadow:inset 3px 0 0 var(--now-line);font-weight:700;
 }
 footer{color:var(--muted);font-size:12px;text-align:center;padding:16px 4px 24px}
 
+/* Підказка «додати на головний екран» — лише для телефонів */
+dialog#a2hs{
+  border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--ink);
+  padding:18px 18px 14px; max-width:min(92vw,420px); font-size:15px;
+  box-shadow:0 12px 40px rgba(0,0,0,.3);
+}
+dialog#a2hs::backdrop{background:rgba(0,0,0,.45)}
+dialog#a2hs h2{margin:0 0 8px;font-size:17px}
+dialog#a2hs p{margin:0 0 14px;line-height:1.5;color:var(--muted)}
+dialog#a2hs b{color:var(--ink)}
+.a2hs-btns{display:flex;gap:8px;justify-content:flex-end}
+.a2hs-btns button{
+  padding:9px 15px;border-radius:999px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink);font-size:15px;cursor:pointer;
+}
+.a2hs-btns button.main{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+
 @media (max-width:640px){
   .wrap{padding:8px}
   h1{font-size:19px}
@@ -201,6 +218,15 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:16px 4px 24px
 </section>
 
 <footer id="stamp"></footer>
+
+<dialog id="a2hs">
+  <h2>📌 Розклад завжди під рукою</h2>
+  <p id="a2hsHow"></p>
+  <div class="a2hs-btns">
+    <button id="a2hsLater">Пізніше</button>
+    <button id="a2hsOk" class="main">Зрозуміло</button>
+  </div>
+</dialog>
 </div>
 
 <script>
@@ -420,7 +446,7 @@ function renderClass(id){
 }
 
 /* ── Пошук із випадним списком ─────────────────────────── */
-function setupSearch(inputId, ddId, items, labelOf, onPick){
+function setupSearch(inputId, ddId, items, labelOf, onPick, route){
   const inp = document.getElementById(inputId), dd = document.getElementById(ddId);
   const close = () => { dd.innerHTML = ""; };
   const open = q => {
@@ -430,49 +456,114 @@ function setupSearch(inputId, ddId, items, labelOf, onPick){
       ? found.map(i => '<div data-id="' + esc(i.id) + '">' + esc(labelOf(i)) + "</div>").join("")
       : '<div style="color:var(--muted)">Нічого не знайдено</div>';
   };
+  const choose = (id, push) => {
+    const it = items.find(i => i.id === id);
+    if (!it) return;
+    inp.value = labelOf(it);
+    close();
+    onPick(id);
+    if (push !== false) setHash("#" + route + "/" + encodeURIComponent(labelOf(it)));
+  };
   inp.addEventListener("input", () => open(inp.value));
   inp.addEventListener("focus", () => open(inp.value));
   dd.addEventListener("click", e => {
     const el = e.target.closest("div[data-id]");
-    if (!el) return;
-    const item = items.find(i => i.id === el.dataset.id);
-    inp.value = labelOf(item);
-    close();
-    onPick(item.id);
+    if (el) choose(el.dataset.id, true);
   });
   document.addEventListener("click", e => {
     if (!e.target.closest("#" + inputId) && !e.target.closest("#" + ddId)) close();
   });
-  return { pick(id){ const it = items.find(i => i.id === id); if (it) inp.value = labelOf(it); close(); onPick(id); } };
+  return { pick: choose, reset(){ inp.value = ""; close(); } };
 }
 
 /* ── Вкладки ───────────────────────────────────────────── */
 const VIEWS = { master:"view-master", teacher:"view-teacher", class:"view-class" };
-function showTab(name){
+function showTab(name, push){
   for (const [k, id] of Object.entries(VIEWS)) document.getElementById(id).hidden = (k !== name);
   document.querySelectorAll(".tab").forEach(b =>
     b.setAttribute("aria-selected", String(b.dataset.tab === name)));
   window.scrollTo({ top:0, behavior:"smooth" });
+  if (push !== false) setHash(name === "master" ? "#" : "#" + name);
 }
 document.querySelectorAll(".tab").forEach(b =>
   b.addEventListener("click", () => showTab(b.dataset.tab)));
 
-/* ── Клік по імені вчителя / назві класу ───────────────── */
+/* Повернути панель пошуку до початкового стану */
 let searchT, searchC;
+function resetPane(which, push){
+  const isT = which === "teacher";
+  document.getElementById(isT ? "outTeacher" : "outClass").innerHTML =
+    '<div class="hint">Введіть ' + (isT ? "прізвище" : "назву класу") +
+    " — зі списку оберіть потрібний варіант.</div>";
+  (isT ? searchT : searchC).reset();
+  if (push !== false) setHash("#" + which);
+}
+
+/* ── Маршрутизація через #hash (щоб стан сторінки можна було
+      зберегти в закладки та відкрити назад/вперед) ─────────── */
+let muteHash = false;                 // власна зміна hash не має викликати повторний рендер
+function setHash(h){
+  if (location.hash === h || (h === "#" && !location.hash)) return;
+  muteHash = true;
+  location.hash = h;
+  setTimeout(() => { muteHash = false; }, 0);
+}
+function applyHash(){
+  const raw  = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+  const sep  = raw.indexOf("/");
+  const kind = (sep === -1 ? raw : raw.slice(0, sep)).toLowerCase();
+  const name = (sep === -1 ? "" : raw.slice(sep + 1)).trim();
+
+  if (kind !== "teacher" && kind !== "class"){ showTab("master", false); return; }
+  showTab(kind, false);
+  const list = kind === "teacher" ? T : C;
+  const item = name && list.find(i => i.name.toLowerCase() === name.toLowerCase());
+  if (item) (kind === "teacher" ? searchT : searchC).pick(item.id, false);
+  else resetPane(kind, false);
+}
+window.addEventListener("hashchange", () => { if (!muteHash) applyHash(); });
+
+/* ── Клік по імені вчителя / назві класу ───────────────── */
 document.addEventListener("click", e => {
   const t = e.target.closest("[data-teacher]");
-  if (t){ showTab("teacher"); searchT.pick(t.dataset.teacher); return; }
+  if (t){ showTab("teacher", false); searchT.pick(t.dataset.teacher); return; }
   const c = e.target.closest("[data-class]");
-  if (c && c.dataset.class){ showTab("class"); searchC.pick(c.dataset.class); return; }
+  if (c && c.dataset.class){ showTab("class", false); searchC.pick(c.dataset.class); return; }
   const b = e.target.closest("[data-back]");
-  if (b){
-    const which = b.dataset.back;
-    document.getElementById(which === "teacher" ? "outTeacher" : "outClass").innerHTML =
-      '<div class="hint">Введіть ' + (which === "teacher" ? "прізвище" : "назву класу") +
-      " — зі списку оберіть потрібний варіант.</div>";
-    document.getElementById(which === "teacher" ? "qTeacher" : "qClass").value = "";
-  }
+  if (b) resetPane(b.dataset.back);
 });
+
+/* ── «Додати на головний екран» — лише телефони ─────────── */
+function maybeOfferInstall(){
+  const ua = navigator.userAgent || "";
+  const iOS = /iPad|iPhone|iPod/.test(ua) ||
+              (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const android = /Android/.test(ua);
+  if (!iOS && !android) return;                       // на комп'ютері не показуємо
+
+  // Уже додано на екран «Додому» — підказка не потрібна
+  const standalone = (window.matchMedia &&
+                      window.matchMedia("(display-mode: standalone)").matches) ||
+                     navigator.standalone === true;
+  if (standalone) return;
+
+  const KEY = "rozklad_a2hs";
+  try { if (localStorage.getItem(KEY)) return; } catch (e) { /* file:// або приватний режим */ }
+
+  const dlg = document.getElementById("a2hs");
+  if (!dlg || !dlg.showModal) return;                 // дуже старий браузер
+  document.getElementById("a2hsHow").innerHTML = iOS
+    ? 'Натисніть <b>Поділитися</b> унизу екрана, а далі — <b>«На екран „Додому“»</b>. ' +
+      "Розклад відкриватиметься як звичайний застосунок."
+    : 'Відкрийте меню браузера <b>⋮</b> і оберіть <b>«Додати на головний екран»</b>. ' +
+      "Розклад відкриватиметься як звичайний застосунок.";
+
+  const remember = () => { try { localStorage.setItem(KEY, "1"); } catch (e) {} };
+  dlg.addEventListener("close", remember);
+  document.getElementById("a2hsOk").addEventListener("click", () => dlg.close());
+  document.getElementById("a2hsLater").addEventListener("click", () => dlg.close());
+  setTimeout(() => { try { dlg.showModal(); } catch (e) {} }, 2000);
+}
 
 /* ── Старт ─────────────────────────────────────────────── */
 function boot(){
@@ -491,10 +582,13 @@ function boot(){
     return ga - gb || na.localeCompare(nb, "uk");
   });
   const sortedT = [...T].sort((a,b) => a.name.localeCompare(b.name, "uk"));
-  searchT = setupSearch("qTeacher", "ddTeacher", sortedT, t => t.name, renderTeacher);
-  searchC = setupSearch("qClass",   "ddClass",   sortedC, c => c.name, renderClass);
+  searchT = setupSearch("qTeacher", "ddTeacher", sortedT, t => t.name, renderTeacher, "teacher");
+  searchC = setupSearch("qClass",   "ddClass",   sortedC, c => c.name, renderClass,   "class");
   document.getElementById("stamp").textContent =
     PAYLOAD.generated ? "Розклад сформовано: " + PAYLOAD.generated : "";
+
+  applyHash();              // відкрити стан із закладки (#teacher/… , #class/9-А)
+  maybeOfferInstall();      // підказка «на головний екран» — тільки телефони
 
   /* Перерахунок підсвітки поточного уроку раз на хвилину */
   setInterval(() => {
