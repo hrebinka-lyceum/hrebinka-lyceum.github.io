@@ -139,22 +139,6 @@ table.pers tr.now td.n{box-shadow:inset 3px 0 0 var(--now-line);font-weight:700;
 }
 footer{color:var(--muted);font-size:12px;text-align:center;padding:16px 4px 24px}
 
-/* Підказка «додати на головний екран» — лише для телефонів */
-dialog#a2hs{
-  border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--ink);
-  padding:18px 18px 14px; max-width:min(92vw,420px); font-size:15px;
-  box-shadow:0 12px 40px rgba(0,0,0,.3);
-}
-dialog#a2hs::backdrop{background:rgba(0,0,0,.45)}
-dialog#a2hs h2{margin:0 0 8px;font-size:17px}
-dialog#a2hs p{margin:0 0 14px;line-height:1.5;color:var(--muted)}
-dialog#a2hs b{color:var(--ink)}
-.a2hs-btns{display:flex;gap:8px;justify-content:flex-end}
-.a2hs-btns button{
-  padding:9px 15px;border-radius:999px;border:1px solid var(--line);
-  background:var(--card);color:var(--ink);font-size:15px;cursor:pointer;
-}
-.a2hs-btns button.main{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 
 @media (max-width:640px){
   .wrap{padding:8px}
@@ -219,14 +203,6 @@ dialog#a2hs b{color:var(--ink)}
 
 <footer id="stamp"></footer>
 
-<dialog id="a2hs">
-  <h2>📌 Розклад завжди під рукою</h2>
-  <p id="a2hsHow"></p>
-  <div class="a2hs-btns">
-    <button id="a2hsLater">Пізніше</button>
-    <button id="a2hsOk" class="main">Зрозуміло</button>
-  </div>
-</dialog>
 </div>
 
 <script>
@@ -533,38 +509,6 @@ document.addEventListener("click", e => {
   if (b) resetPane(b.dataset.back);
 });
 
-/* ── «Додати на головний екран» — лише телефони ─────────── */
-function maybeOfferInstall(){
-  const ua = navigator.userAgent || "";
-  const iOS = /iPad|iPhone|iPod/.test(ua) ||
-              (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const android = /Android/.test(ua);
-  if (!iOS && !android) return;                       // на комп'ютері не показуємо
-
-  // Уже додано на екран «Додому» — підказка не потрібна
-  const standalone = (window.matchMedia &&
-                      window.matchMedia("(display-mode: standalone)").matches) ||
-                     navigator.standalone === true;
-  if (standalone) return;
-
-  const KEY = "rozklad_a2hs";
-  try { if (localStorage.getItem(KEY)) return; } catch (e) { /* file:// або приватний режим */ }
-
-  const dlg = document.getElementById("a2hs");
-  if (!dlg || !dlg.showModal) return;                 // дуже старий браузер
-  document.getElementById("a2hsHow").innerHTML = iOS
-    ? 'Натисніть <b>Поділитися</b> унизу екрана, а далі — <b>«На екран „Додому“»</b>. ' +
-      "Розклад відкриватиметься як звичайний застосунок."
-    : 'Відкрийте меню браузера <b>⋮</b> і оберіть <b>«Додати на головний екран»</b>. ' +
-      "Розклад відкриватиметься як звичайний застосунок.";
-
-  const remember = () => { try { localStorage.setItem(KEY, "1"); } catch (e) {} };
-  dlg.addEventListener("close", remember);
-  document.getElementById("a2hsOk").addEventListener("click", () => dlg.close());
-  document.getElementById("a2hsLater").addEventListener("click", () => dlg.close());
-  setTimeout(() => { try { dlg.showModal(); } catch (e) {} }, 2000);
-}
-
 /* ── Старт ─────────────────────────────────────────────── */
 function boot(){
   if (PAYLOAD.info && PAYLOAD.info.trim()){
@@ -588,7 +532,6 @@ function boot(){
     PAYLOAD.generated ? "Розклад сформовано: " + PAYLOAD.generated : "";
 
   applyHash();              // відкрити стан із закладки (#teacher/… , #class/9-А)
-  maybeOfferInstall();      // підказка «на головний екран» — тільки телефони
 
   /* Перерахунок підсвітки поточного уроку раз на хвилину */
   setInterval(() => {
